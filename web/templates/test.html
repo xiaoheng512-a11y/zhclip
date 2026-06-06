@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Test</title></head>
+<body>
+<button id="btn">点我</button>
+<script>
+console.log('test script loaded');
+document.getElementById('btn').onclick = function() {
+  alert('clicked!');
+  document.getElementById('out').textContent = '成功!';
+};
+</script>
+<div id="out"></div>
+</body>
+</html>

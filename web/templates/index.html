@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<META HTTP-EQUIV="CACHE-CONTROL" CONTENT="NO-CACHE">
+<META HTTP-EQUIV="EXPIRES" CONTENT="0">
+<META HTTP-EQUIV="PRAGMA" CONTENT="NO-CACHE">
+<title>zhclip - 视频转文字</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f0f0f; color: #e0e0e0; min-height: 100vh;
+  }
+  .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+
+  /* Header */
+  h1 { font-size: 24px; margin-bottom: 4px; color: #fff; }
+  .subtitle { color: #888; font-size: 13px; margin-bottom: 24px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 1px solid #333; }
+  .tab { padding: 10px 20px; cursor: pointer; color: #888; border-bottom: 2px solid transparent; }
+  .tab.active { color: #fff; border-bottom-color: #4CAF50; }
+
+  /* Forms */
+  .form-panel { display: none; }
+  .form-panel.active { display: block; }
+  .input-group { display: flex; gap: 8px; margin-bottom: 12px; }
+  .input-group input { flex: 1; padding: 10px 14px; background: #1a1a1a; border: 1px solid #333;
+    border-radius: 8px; color: #fff; font-size: 14px; outline: none; }
+  .input-group input:focus { border-color: #4CAF50; }
+  .input-group input::placeholder { color: #555; }
+  .btn { padding: 10px 20px; background: #4CAF50; color: #fff; border: none; border-radius: 8px;
+    font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: #43A047; }
+  .btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+  .options { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; font-size: 13px; }
+  .options label { display: flex; align-items: center; gap: 6px; cursor: pointer; color: #aaa; }
+  .options select { padding: 6px 10px; background: #1a1a1a; border: 1px solid #333;
+    border-radius: 6px; color: #e0e0e0; font-size: 13px; }
+
+  /* Status */
+  .status { padding: 12px 16px; background: #1a1a1a; border-radius: 8px; margin-bottom: 16px;
+    font-size: 13px; color: #888; display: none; }
+  .status.show { display: block; }
+  .status .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #444;
+    border-top-color: #4CAF50; border-radius: 50%; animation: spin 0.8s linear infinite;
+    margin-right: 8px; vertical-align: middle; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status.error { color: #e57373; border-color: #e57373; }
+  .status .cache-badge { display: inline-block; background: #2d4a2d; color: #81C784;
+    padding: 2px 8px; border-radius: 4px; font-size: 11px; margin-left: 8px; }
+
+  /* Result */
+  .result { display: none; }
+  .result.show { display: block; }
+  .result-header { display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+  .result-header .meta { font-size: 12px; color: #666; }
+  .result-header .meta span { margin-right: 12px; }
+  .btn-sm { padding: 6px 12px; font-size: 12px; background: #333; color: #ccc;
+    border: 1px solid #444; border-radius: 6px; cursor: pointer; }
+  .btn-sm:hover { background: #444; }
+
+  /* Segment */
+  .segment { padding: 12px 0; border-bottom: 1px solid #222; }
+  .segment:last-child { border-bottom: none; }
+  .segment .time { font-size: 11px; color: #4CAF50; font-family: monospace; margin-bottom: 4px;
+    cursor: pointer; display: inline-block; }
+  .segment .time:hover { text-decoration: underline; }
+  .segment .en { font-size: 14px; line-height: 1.6; color: #e0e0e0; margin-bottom: 4px; }
+  .segment .zh { font-size: 14px; line-height: 1.6; color: #888; }
+  .segment .zh::before { content: "📝 "; font-size: 12px; }
+  .segment:target { background: rgba(76,175,80,0.08); border-radius: 8px; margin: 0 -12px;
+    padding-left: 12px; padding-right: 12px; }
+
+  /* File upload */
+  .file-upload { border: 2px dashed #333; border-radius: 8px; padding: 30px; text-align: center;
+    cursor: pointer; margin-bottom: 12px; transition: border-color 0.2s; }
+  .file-upload:hover, .file-upload.dragover { border-color: #4CAF50; }
+  .file-upload p { color: #888; font-size: 13px; margin-top: 8px; }
+  .file-upload .icon { font-size: 32px; }
+
+  /* Empty state */
+  .empty-state { text-align: center; padding: 60px 20px; color: #555; }
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+  .empty-state p { font-size: 14px; }
+
+  @media (max-width: 600px) {
+    .container { padding: 12px; }
+    .input-group { flex-direction: column; }
+    .options { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>zhclip</h1>
+  <p class="subtitle">纯 CPU 视频转文字 · 双语对照 · 时间戳跳转</p>
+
+  <!-- Tabs -->
+    <div class="tabs">
+    <div class="tab active" onclick="switchTab('url')" data-tab="url">YouTube 链接</div>
+    <div class="tab" onclick="switchTab('file')" data-tab="file">上传文件</div>
+  </div>
+
+  <!-- URL Tab -->
+  <div class="form-panel active" id="panel-url">
+    <div class="input-group">
+      <input type="text" id="url-input" placeholder="粘贴 YouTube 链接...">
+      <button class="btn" id="btn-url">转写</button>
+    </div>
+    <div class="options">
+      <label><select id="lang-url"><option value="auto">自动检测</option>
+        <option value="zh">中文</option><option value="en">英文</option>
+        <option value="zh-en">中英混合</option><option value="yue">粤语</option>
+      </select></label>
+      <label><input type="checkbox" id="translate-url" checked>
+        翻译为中文</label>
+    </div>
+  </div>
+
+  <!-- File Tab -->
+  <div class="form-panel" id="panel-file">
+    <div class="file-upload" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <div class="icon">📁</div>
+      <p>点击选择音频/视频文件，或拖拽到此处</p>
+      <p style="font-size:11px;color:#555;margin-top:4px">支持 mp3, mp4, wav, webm 等</p>
+    </div>
+    <input type="file" id="file-input" accept="audio/*,video/*" style="display:none">
+    <div class="options">
+      <label><select id="lang-file"><option value="auto">自动检测</option>
+        <option value="zh">中文</option><option value="en">英文</option>
+        <option value="zh-en">中英混合</option><option value="yue">粤语</option>
+      </select></label>
+      <label><input type="checkbox" id="translate-file" checked>
+        翻译为中文</label>
+    </div>
+  </div>
+
+  <!-- Status -->
+  <div class="status" id="status">
+    <span class="spinner"></span><span id="status-text">处理中...</span>
+  </div>
+
+  <!-- Result -->
+  <div class="result" id="result">
+    <div class="result-header">
+      <div class="meta">
+        <span id="meta-duration"></span>
+        <span id="meta-time"></span>
+        <span id="meta-lang"></span>
+      </div>
+      <div>
+        <button class="btn-sm" onclick="copyResult()">📋 复制全文</button>
+        <button class="btn-sm" onclick="downloadResult()">⬇ 下载</button>
+      </div>
+    </div>
+    <div id="segments-container"></div>
+  </div>
+
+  <!-- Empty -->
+  <div class="empty-state" id="empty">
+    <div class="icon">🎙️</div>
+    <p>粘贴 YouTube 链接或上传文件，开始转写</p>
+  </div>
+</div>
+
+<script>
+let currentResult = null;
+let currentSourceUrl = null;
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
+  document.getElementById(`panel-${name}`).classList.add('active');
+}
+
+function showStatus(msg, isError) {
+  const el = document.getElementById('status');
+  const text = document.getElementById('status-text');
+  text.textContent = msg;
+  el.classList.remove('error');
+  if (isError) el.classList.add('error');
+  el.classList.add('show');
+}
+
+function hideStatus() {
+  document.getElementById('status').classList.remove('show');
+}
+
+function extractVideoId(url) {
+  const m = url.match(/(?:v=|\/v\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function segmentAnchor(seg) {
+  return `seg-${Math.round(seg.start * 10)}`;
+}
+
+function renderSegments(data) {
+  const container = document.getElementById('segments-container');
+  const segments = data.segments || [];
+
+  if (segments.length === 0) {
+    container.innerHTML = '<div style="color:#888;padding:20px;text-align:center">转写结果为空</div>';
+    return;
+  }
+
+  let html = '';
+  const vid = extractVideoId(currentSourceUrl || '');
+
+  for (const seg of segments) {
+    const anchor = segmentAnchor(seg);
+    const tsUrl = vid ? `https://youtu.be/${vid}?t=${Math.floor(seg.start)}` : '#';
+
+    html += `<div class="segment" id="${anchor}">`;
+    html += `<a class="time" href="${tsUrl}" target="_blank" title="跳转到视频 ${formatTime(seg.start)}">`;
+    html += `▶ ${formatTime(seg.start)} - ${formatTime(seg.end)}</a>`;
+    html += `<div class="en">${escapeHtml(seg.text)}</div>`;
+    if (seg.translated) {
+      html += `<div class="zh">${escapeHtml(seg.translated)}</div>`;
+    }
+    html += '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+function escapeHtml(text) {
+  const d = document.createElement('div');
+  d.textContent = text;
+  return d.innerHTML;
+}
+
+async function transcribeUrl() {
+  const url = document.getElementById('url-input').value.trim();
+  if (!url) return;
+
+  const lang = document.getElementById('lang-url').value;
+  const translate = document.getElementById('translate-url').checked;
+
+  const btn = document.getElementById('btn-url');
+  btn.disabled = true;
+  btn.textContent = '转写中...';
+
+  showStatus('正在下载并转写（纯 CPU，约 10分钟/20分钟视频）...');
+  document.getElementById('result').classList.remove('show');
+  document.getElementById('empty').style.display = 'none';
+
+  try {
+    const res = await fetch('/api/transcribe/url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, language: lang, translate }),
+    });
+    const data = await res.json();
+
+    if (data.error || data.detail) {
+      showStatus(data.detail || data.error || '转写失败', true);
+      btn.disabled = false;
+      btn.textContent = '转写';
+      return;
+    }
+
+    currentResult = data;
+    currentSourceUrl = url;
+    showResult(data);
+    hideStatus();
+  } catch (e) {
+    showStatus('网络错误: ' + e.message, true);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '转写';
+}
+
+async function transcribeFile(file) {
+  if (!file) return;
+
+  const lang = document.getElementById('lang-file').value;
+  const translate = document.getElementById('translate-file').checked;
+
+  showStatus('正在转写（纯 CPU）...');
+  document.getElementById('result').classList.remove('show');
+  document.getElementById('empty').style.display = 'none';
+
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('language', lang);
+    form.append('translate', translate);
+
+    const res = await fetch('/api/transcribe/file', {
+      method: 'POST',
+      body: form,
+    });
+    const data = await res.json();
+
+    if (data.error || data.detail) {
+      showStatus(data.detail || data.error || '转写失败', true);
+      return;
+    }
+
+    currentResult = data;
+    currentSourceUrl = '';
+    showResult(data);
+    hideStatus();
+  } catch (e) {
+    showStatus('网络错误: ' + e.message, true);
+  }
+}
+
+function showResult(data) {
+  const segments = data.segments || [];
+  if (data.elapsed) {
+    const mins = Math.floor(data.elapsed / 60);
+    const secs = Math.floor(data.elapsed % 60);
+    document.getElementById('meta-time').textContent = `⏱ 处理 ${mins}分${secs}秒`;
+  }
+  if (data.duration) {
+    const mins = Math.floor(data.duration / 60);
+    document.getElementById('meta-duration').textContent = `🎬 时长 ${mins}分${Math.floor(data.duration % 60)}秒`;
+  }
+  if (data.language) {
+    document.getElementById('meta-lang').textContent = `🌐 ` + (data.language === 'en' ? '英文' : data.language === 'zh' ? '中文' : data.language);
+  }
+
+  renderSegments(data);
+  document.getElementById('result').classList.add('show');
+}
+
+function copyResult() {
+  if (!currentResult) return;
+  let text = '';
+  const vid = extractVideoId(currentSourceUrl || '');
+  for (const seg of currentResult.segments || []) {
+    const tsUrl = vid ? `https://youtu.be/${vid}?t=${Math.floor(seg.start)}` : '';
+    text += `[${formatTime(seg.start)}] ${seg.text}\n`;
+    if (seg.translated) {
+      text += `  ${seg.translated}\n`;
+    }
+    text += '\n';
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    showStatus('✅ 已复制到剪贴板');
+    setTimeout(hideStatus, 2000);
+  });
+}
+
+function downloadResult() {
+  if (!currentResult) return;
+  let text = '';
+  for (const seg of currentResult.segments || []) {
+    text += `[${formatTime(seg.start)} - ${formatTime(seg.end)}]\n`;
+    text += `${seg.text}\n`;
+    if (seg.translated) {
+      text += `${seg.translated}\n\n`;
+    } else {
+      text += '\n';
+    }
+  }
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `zhclip-${Date.now()}.txt`;
+  a.click();
+}
+
+// 绑定事件（脚本在 body 底部，DOM 已就绪，不需要 DOMContentLoaded）
+console.log('zhclip JS loaded');
+
+// Tab 切换 - 最简单的方式
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.form-panel').forEach(p => p.classList.remove('active'));
+  document.querySelector('.tab[data-tab="' + name + '"]').classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+// 直接用 onclick 属性（最可靠的方式）
+document.getElementById('btn-url').onclick = function() { transcribeUrl(); };
+document.getElementById('drop-zone').onclick = function() { document.getElementById('file-input').click(); };
+document.getElementById('file-input').onchange = function() { if (this.files[0]) transcribeFile(this.files[0]); };
+document.getElementById('url-input').onkeydown = function(e) { if (e.key === 'Enter') transcribeUrl(); };
+</script>
+</body>
+</html>
